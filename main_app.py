@@ -5,6 +5,9 @@ import requests
 from PIL import Image
 from io import BytesIO
 
+# ✅ This MUST be the first Streamlit command
+st.set_page_config(page_title="PrepChef Meal Planner", layout="wide")
+
 # Theme toggle
 if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "light"
@@ -12,7 +15,6 @@ theme = st.sidebar.selectbox("🌗 Theme Mode", ["light", "dark"])
 st.session_state["theme_mode"] = theme
 
 # Title and branding
-st.set_page_config(page_title="PrepChef Meal Planner", layout="wide")
 st.markdown("""
     <div style='text-align: center; padding: 1rem;'>
         <h1 style='margin-bottom: 0;'>👨‍🍳 PrepChef</h1>
@@ -43,7 +45,7 @@ if menu == "Login" and not st.session_state.logged_in:
         else:
             st.error("Invalid credentials")
 
-# Simulated AI fetch (replace with real API integration)
+# Stubbed recipe fetch
 def fetch_recipe_stub():
     return {
         "title": "Chicken Tinga Tacos",
