@@ -26,6 +26,11 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_type = ""
     st.session_state.feedback = {}
+    st.session_state.user_preferences = {
+        "diet": "",
+        "allergies": [],
+        "cuisines": []
+    }
 
 if menu == "Login" and not st.session_state.logged_in:
     st.subheader("Login")
@@ -74,11 +79,31 @@ if st.session_state.logged_in:
         day = st.date_input("Start Date", value=datetime.today())
         plan_days = st.selectbox("How many days to plan?", [1, 5, 7])
 
+        # User Preferences
+        st.markdown("### 🍽️ Set Your Preferences")
+        diet = st.selectbox("Diet", ["", "vegan", "vegetarian", "keto", "gluten free", "pescetarian"], index=0)
+        allergies = st.multiselect("Allergies", ["dairy", "gluten", "peanut", "soy", "shellfish", "eggs"])
+        cuisines = st.multiselect("Preferred Cuisines", ["Mexican", "American Traditional", "Thai", "Italian", "Caribbean", "French", "African", "Chinese"])
+
+        if st.button("Save Preferences"):
+            st.session_state.user_preferences = {
+                "diet": diet,
+                "allergies": allergies,
+                "cuisines": cuisines
+            }
+            st.success("Preferences saved.")
+
         if st.button("Generate Plan"):
             fallback_pool = get_all_mealdb_recipes()
             random.shuffle(fallback_pool)
             used_titles = set()
             weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+            all_titles = set([m["title"] for m in fallback_pool])
+            liked_titles = {k.split("_")[-1] for k, v in st.session_state.feedback.items() if v == "like"}
+
+            if liked_titles == all_titles:
+                st.warning("You’ve liked all available meals! Please add new cuisines or refresh options.")
 
             for d in range(plan_days):
                 label = weekdays[d % 7]
