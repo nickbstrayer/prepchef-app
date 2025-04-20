@@ -43,6 +43,26 @@ if menu == "Login" and not st.session_state.logged_in:
         else:
             st.error("Invalid credentials")
 
+@st.cache_data(ttl=86400)
+def get_mealdb_recipes():
+    res = requests.get("https://www.themealdb.com/api/json/v1/1/search.php?s=")
+    if res.status_code == 200:
+        data = res.json()
+        meals = data.get("meals", [])
+        clean_meals = []
+        for m in meals:
+            if m and m.get("strMeal") and m.get("strInstructions") and m.get("strMealThumb"):
+                clean_meals.append({
+                    "title": m["strMeal"],
+                    "image": m["strMealThumb"],
+                    "instructions": m["strInstructions"],
+                    "extendedIngredients": [
+                        {"name": m[k]} for k in m if k.startswith("strIngredient") and m[k] and m[k] != ""
+                    ]
+                })
+        return clean_meals
+    return []
+
 @st.cache_data(ttl=3600)
 def fetch_recipe(cuisine, diet, intolerances):
     base_url = "https://api.spoonacular.com/recipes/complexSearch"
@@ -68,28 +88,7 @@ def fetch_recipe(cuisine, diet, intolerances):
     if recipe: return recipe
     recipe = query("", diet, "")
     if recipe: return recipe
-
-    fallback = requests.get("https://www.themealdb.com/api/json/v1/1/random.php")
-    if fallback.status_code == 200:
-        data = fallback.json()
-        m = data.get("meals")[0]
-        return {
-            "title": m["strMeal"],
-            "image": m["strMealThumb"],
-            "instructions": m["strInstructions"],
-            "extendedIngredients": [
-                {"name": m[k]} for k in m if k.startswith("strIngredient") and m[k]
-            ]
-        }
-
-    return {
-        "title": "Simple Pasta",
-        "image": "https://www.themealdb.com/images/media/meals/ustsqw1468250014.jpg",
-        "instructions": "Boil pasta, add sauce, serve.",
-        "extendedIngredients": [
-            {"name": "pasta"}, {"name": "tomato sauce"}, {"name": "olive oil"}
-        ]
-    }
+    return None  # fallback now handled outside
 
 if st.session_state.logged_in:
     st.sidebar.success(f"Logged in as {st.session_state.user_type}")
@@ -103,25 +102,38 @@ if st.session_state.logged_in:
         cuisines = st.multiselect("Preferred Cuisines", ["Mexican", "Italian", "Thai", "French", "Chinese"])
 
         if st.button("Generate Plan"):
+            fallback_pool = get_mealdb_recipes()
+            random.shuffle(fallback_pool)
+
             for d in range(plan_days):
                 st.markdown(f"### 📅 Day {d + 1} — {day + timedelta(days=d):%A, %B %d}")
                 seen_titles_day = set()
 
                 for meal_time in ["Breakfast", "Lunch", "Dinner"]:
                     attempts = 0
-                    while attempts < 10:
+                    recipe = None
+                    while attempts < 5:
                         selected_cuisine = random.choice(cuisines) if cuisines else "American"
                         recipe = fetch_recipe(selected_cuisine, diet, ",".join(allergies))
-                        if recipe and recipe['title'] not in seen_titles_day:
-                            seen_titles_day.add(recipe['title'])
-                            st.markdown(f"#### 🍽️ {meal_time}: {recipe['title']}")
-                            st.image(recipe.get("image"), width=350)
-                            st.write("**Ingredients Preview:**")
-                            st.write([i['name'] for i in recipe.get("extendedIngredients", [])])
-                            st.write("**Instructions:**")
-                            st.markdown(recipe.get("instructions") or "No instructions provided.")
+                        if recipe and recipe['title'] not in seen_titles_day and recipe.get("instructions"):
                             break
                         attempts += 1
+
+                    if not recipe:
+                        # fallback from preloaded
+                        for fallback in fallback_pool:
+                            if fallback['title'] not in seen_titles_day:
+                                recipe = fallback
+                                break
+
+                    if recipe:
+                        seen_titles_day.add(recipe['title'])
+                        st.markdown(f"#### 🍽️ {meal_time}: {recipe['title']}")
+                        st.image(recipe.get("image"), width=350)
+                        st.write("**Ingredients Preview:**")
+                        st.write([i['name'] for i in recipe.get("extendedIngredients", [])])
+                        st.write("**Instructions:**")
+                        st.markdown(recipe.get("instructions") or "No instructions provided.")
                     else:
                         st.warning(f"Could not find a unique recipe for {meal_time}.")
 
