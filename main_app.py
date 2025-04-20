@@ -47,7 +47,7 @@ if menu == "Login" and not st.session_state.logged_in:
         else:
             st.error("Invalid credentials")
 
-# Spoonacular fetch function with fallback
+# Recipe fetch logic (Spoonacular + fallback to TheMealDB)
 @st.cache_data(ttl=3600)
 def fetch_recipe(cuisine, diet, intolerances):
     base_url = "https://api.spoonacular.com/recipes/complexSearch"
@@ -63,22 +63,32 @@ def fetch_recipe(cuisine, diet, intolerances):
         res = requests.get(base_url, params=params)
         if res.status_code == 200:
             data = res.json()
-            return data.get("results", [])[0] if data.get("results") else None
+            if data.get("results"):
+                return data["results"][0]
         return None
 
-    # Try full query
+    # Try Spoonacular in tiers
     recipe = query(cuisine, diet, intolerances)
     if recipe: return recipe
-
-    # Try removing cuisine
     recipe = query("", diet, intolerances)
     if recipe: return recipe
-
-    # Try removing intolerances
     recipe = query("", diet, "")
     if recipe: return recipe
 
-    # Return static fallback
+    # Fallback: TheMealDB
+    fallback = requests.get("https://www.themealdb.com/api/json/v1/1/random.php")
+    if fallback.status_code == 200:
+        data = fallback.json()
+        m = data.get("meals")[0]
+        return {
+            "title": m["strMeal"],
+            "image": m["strMealThumb"],
+            "instructions": m["strInstructions"],
+            "extendedIngredients": [
+                {"name": m[k]} for k in m if k.startswith("strIngredient") and m[k]
+            ]
+        }
+
     return {
         "title": "Simple Pasta",
         "image": "https://www.themealdb.com/images/media/meals/ustsqw1468250014.jpg",
