@@ -2,8 +2,6 @@ import streamlit as st
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
-from PIL import Image
-from io import BytesIO
 import random
 
 st.set_page_config(page_title="PrepChef Meal Planner", layout="wide")
@@ -27,6 +25,7 @@ menu = st.sidebar.radio("Navigate", ["Login", "Meal Plan", "Shopping List", "Ord
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_type = ""
+    st.session_state.feedback = {}
 
 if menu == "Login" and not st.session_state.logged_in:
     st.subheader("Login")
@@ -67,33 +66,6 @@ def get_all_mealdb_recipes():
                         })
     return all_meals
 
-@st.cache_data(ttl=3600)
-def fetch_recipe(cuisine, diet, intolerances):
-    base_url = "https://api.spoonacular.com/recipes/complexSearch"
-    def query(c, d, i):
-        params = {
-            "apiKey": API_KEY,
-            "number": 1,
-            "addRecipeInformation": True,
-            "cuisine": c,
-            "diet": d,
-            "intolerances": i
-        }
-        res = requests.get(base_url, params=params)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("results"):
-                return data["results"][0]
-        return None
-
-    recipe = query(cuisine, diet, intolerances)
-    if recipe: return recipe
-    recipe = query("", diet, intolerances)
-    if recipe: return recipe
-    recipe = query("", diet, "")
-    if recipe: return recipe
-    return None
-
 if st.session_state.logged_in:
     st.sidebar.success(f"Logged in as {st.session_state.user_type}")
 
@@ -101,45 +73,41 @@ if st.session_state.logged_in:
         st.subheader("🗓️ Create Your Meal Plan")
         day = st.date_input("Start Date", value=datetime.today())
         plan_days = st.selectbox("How many days to plan?", [1, 5, 7])
-        diet = st.selectbox("Diet", ["", "vegan", "vegetarian", "gluten free", "pescetarian"])
-        allergies = st.multiselect("Allergies", ["dairy", "gluten", "peanut", "soy"])
-        cuisines = st.multiselect("Preferred Cuisines", ["Mexican", "Italian", "Thai", "French", "Chinese"])
 
         if st.button("Generate Plan"):
             fallback_pool = get_all_mealdb_recipes()
             random.shuffle(fallback_pool)
             used_titles = set()
+            weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
             for d in range(plan_days):
-                st.markdown(f"### 📅 Day {d + 1} — {day + timedelta(days=d):%A, %B %d}")
+                label = weekdays[d % 7]
+                st.markdown(f"### 📅 {label} – {day + timedelta(days=d):%B %d}")
 
                 for meal_time in ["Breakfast", "Lunch", "Dinner"]:
                     recipe = None
-                    attempts = 0
-
-                    while attempts < 5:
-                        selected_cuisine = random.choice(cuisines) if cuisines else "American"
-                        recipe = fetch_recipe(selected_cuisine, diet, ",".join(allergies))
-                        if recipe and recipe['title'] not in used_titles and recipe.get("instructions"):
+                    for fallback in fallback_pool:
+                        if fallback['title'] not in used_titles:
+                            recipe = fallback
+                            used_titles.add(recipe['title'])
                             break
-                        attempts += 1
-
-                    if not recipe:
-                        for fallback in fallback_pool:
-                            if fallback['title'] not in used_titles:
-                                recipe = fallback
-                                break
 
                     if recipe:
-                        used_titles.add(recipe['title'])
+                        key = f"{label}_{meal_time}_{recipe['title']}"
                         st.markdown(f"#### 🍽️ {meal_time}: {recipe['title']}")
                         st.image(recipe.get("image"), width=350)
                         st.write("**Ingredients Preview:**")
                         st.write([i['name'] for i in recipe.get("extendedIngredients", [])])
                         st.write("**Instructions:**")
                         st.markdown(recipe.get("instructions") or "No instructions provided.")
-                    else:
-                        st.warning(f"Could not find a unique recipe for {meal_time}.")
+
+                        cols = st.columns([1, 1])
+                        with cols[0]:
+                            if st.button("👍", key=f"like_{key}"):
+                                st.session_state.feedback[key] = "like"
+                        with cols[1]:
+                            if st.button("👎", key=f"dislike_{key}"):
+                                st.session_state.feedback[key] = "dislike"
 
     elif menu == "Shopping List":
         st.subheader("🛒 Shopping List")
