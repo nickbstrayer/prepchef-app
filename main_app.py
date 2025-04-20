@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from PIL import Image
 from io import BytesIO
+import random
 
 st.set_page_config(page_title="PrepChef Meal Planner", layout="wide")
 
@@ -102,16 +103,17 @@ if st.session_state.logged_in:
         cuisines = st.multiselect("Preferred Cuisines", ["Mexican", "Italian", "Thai", "French", "Chinese"])
 
         if st.button("Generate Plan"):
-            seen_titles = set()
             for d in range(plan_days):
                 st.markdown(f"### 📅 Day {d + 1} — {day + timedelta(days=d):%A, %B %d}")
+                seen_titles_day = set()
+
                 for meal_time in ["Breakfast", "Lunch", "Dinner"]:
                     attempts = 0
-                    while attempts < 5:
-                        selected_cuisine = cuisines[(d + attempts) % len(cuisines)] if cuisines else "American"
+                    while attempts < 10:
+                        selected_cuisine = random.choice(cuisines) if cuisines else "American"
                         recipe = fetch_recipe(selected_cuisine, diet, ",".join(allergies))
-                        if recipe and recipe['title'] not in seen_titles:
-                            seen_titles.add(recipe['title'])
+                        if recipe and recipe['title'] not in seen_titles_day:
+                            seen_titles_day.add(recipe['title'])
                             st.markdown(f"#### 🍽️ {meal_time}: {recipe['title']}")
                             st.image(recipe.get("image"), width=350)
                             st.write("**Ingredients Preview:**")
