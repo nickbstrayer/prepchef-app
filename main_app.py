@@ -47,23 +47,46 @@ if menu == "Login" and not st.session_state.logged_in:
         else:
             st.error("Invalid credentials")
 
-# Spoonacular fetch function
+# Spoonacular fetch function with fallback
 @st.cache_data(ttl=3600)
 def fetch_recipe(cuisine, diet, intolerances):
-    url = "https://api.spoonacular.com/recipes/complexSearch"
-    params = {
-        "apiKey": API_KEY,
-        "number": 1,
-        "cuisine": cuisine,
-        "diet": diet,
-        "intolerances": intolerances,
-        "addRecipeInformation": True
+    base_url = "https://api.spoonacular.com/recipes/complexSearch"
+    def query(c, d, i):
+        params = {
+            "apiKey": API_KEY,
+            "number": 1,
+            "addRecipeInformation": True,
+            "cuisine": c,
+            "diet": d,
+            "intolerances": i
+        }
+        res = requests.get(base_url, params=params)
+        if res.status_code == 200:
+            data = res.json()
+            return data.get("results", [])[0] if data.get("results") else None
+        return None
+
+    # Try full query
+    recipe = query(cuisine, diet, intolerances)
+    if recipe: return recipe
+
+    # Try removing cuisine
+    recipe = query("", diet, intolerances)
+    if recipe: return recipe
+
+    # Try removing intolerances
+    recipe = query("", diet, "")
+    if recipe: return recipe
+
+    # Return static fallback
+    return {
+        "title": "Simple Pasta",
+        "image": "https://www.themealdb.com/images/media/meals/ustsqw1468250014.jpg",
+        "instructions": "Boil pasta, add sauce, serve.",
+        "extendedIngredients": [
+            {"name": "pasta"}, {"name": "tomato sauce"}, {"name": "olive oil"}
+        ]
     }
-    res = requests.get(url, params=params)
-    if res.status_code == 200:
-        data = res.json()
-        return data.get("results", [])[0] if data.get("results") else None
-    return None
 
 # Logged-in sections
 if st.session_state.logged_in:
@@ -83,15 +106,12 @@ if st.session_state.logged_in:
                 selected_cuisine = cuisines[i % len(cuisines)] if cuisines else "American"
                 recipe = fetch_recipe(selected_cuisine, diet, ",".join(allergies))
 
-                if recipe:
-                    st.markdown(f"#### 🍽️ {recipe['title']}")
-                    st.image(recipe.get("image"), width=350)
-                    st.write("**Ingredients Preview:**")
-                    st.write([i['name'] for i in recipe.get("extendedIngredients", [])])
-                    st.write("**Instructions:**")
-                    st.markdown(recipe.get("instructions") or "No instructions provided.")
-                else:
-                    st.warning("No recipe found for selected preferences.")
+                st.markdown(f"#### 🍽️ {recipe['title']}")
+                st.image(recipe.get("image"), width=350)
+                st.write("**Ingredients Preview:**")
+                st.write([i['name'] for i in recipe.get("extendedIngredients", [])])
+                st.write("**Instructions:**")
+                st.markdown(recipe.get("instructions") or "No instructions provided.")
 
     elif menu == "Shopping List":
         st.subheader("🛒 Shopping List")
