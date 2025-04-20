@@ -5,8 +5,10 @@ import requests
 from PIL import Image
 from io import BytesIO
 
-# ✅ This MUST be the first Streamlit command
 st.set_page_config(page_title="PrepChef Meal Planner", layout="wide")
+
+# Spoonacular API key
+API_KEY = "ZXLohb41LpxjixMvNwgd6xP0hDIYPiLR"
 
 # Theme toggle
 if "theme_mode" not in st.session_state:
@@ -14,7 +16,7 @@ if "theme_mode" not in st.session_state:
 theme = st.sidebar.selectbox("🌗 Theme Mode", ["light", "dark"])
 st.session_state["theme_mode"] = theme
 
-# Title and branding
+# Header
 st.markdown("""
     <div style='text-align: center; padding: 1rem;'>
         <h1 style='margin-bottom: 0;'>👨‍🍳 PrepChef</h1>
@@ -22,14 +24,14 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Navigation
+# Sidebar nav
 menu = st.sidebar.radio("Navigate", ["Login", "Meal Plan", "Shopping List", "Order & Delivery"])
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_type = ""
 
-# Login
+# Login section
 if menu == "Login" and not st.session_state.logged_in:
     st.subheader("Login")
     user_type = st.radio("Select User Type", ["user", "admin"])
@@ -45,34 +47,51 @@ if menu == "Login" and not st.session_state.logged_in:
         else:
             st.error("Invalid credentials")
 
-# Stubbed recipe fetch
-def fetch_recipe_stub():
-    return {
-        "title": "Chicken Tinga Tacos",
-        "image": "https://www.themealdb.com/images/media/meals/wvpsxx1468256321.jpg",
-        "instructions": "Cook chicken, mix with tinga sauce, serve in tortillas.",
-        "ingredients": ["chicken", "onion", "garlic", "tomato", "chipotle"]
+# Spoonacular fetch function
+@st.cache_data(ttl=3600)
+def fetch_recipe(cuisine, diet, intolerances):
+    url = "https://api.spoonacular.com/recipes/complexSearch"
+    params = {
+        "apiKey": API_KEY,
+        "number": 1,
+        "cuisine": cuisine,
+        "diet": diet,
+        "intolerances": intolerances,
+        "addRecipeInformation": True
     }
+    res = requests.get(url, params=params)
+    if res.status_code == 200:
+        data = res.json()
+        return data.get("results", [])[0] if data.get("results") else None
+    return None
 
+# Logged-in sections
 if st.session_state.logged_in:
     st.sidebar.success(f"Logged in as {st.session_state.user_type}")
 
     if menu == "Meal Plan":
         st.subheader("🗓️ Create Your Meal Plan")
-        date = st.date_input("Select date", value=datetime.today())
+        day = st.date_input("Select date", value=datetime.today())
         meals_per_day = st.radio("Meals per day", ["One meal", "Three meals"])
-        restrictions = st.multiselect("Dietary restrictions", ["Dairy-Free", "Gluten-Free"])
-        cuisines = st.multiselect("Cuisine preferences", ["Mexican", "Italian", "Thai"])
-        taste = st.radio("Taste profile", ["Spicy", "Mild", "Neutral"])
+        diet = st.selectbox("Diet", ["", "vegan", "vegetarian", "gluten free", "pescetarian"])
+        allergies = st.multiselect("Allergies", ["dairy", "gluten", "peanut", "soy"])
+        cuisines = st.multiselect("Preferred Cuisines", ["Mexican", "Italian", "Thai", "French", "Chinese"])
 
-        if st.button("Generate Meal Plan"):
-            meal = fetch_recipe_stub()
-            st.image(meal["image"], width=400)
-            st.markdown(f"### {meal['title']}")
-            st.write("**Ingredients:**")
-            st.write(meal["ingredients"])
-            st.write("**Instructions:**")
-            st.write(meal["instructions"])
+        if st.button("Generate Plan"):
+            num = 3 if meals_per_day == "Three meals" else 1
+            for i in range(num):
+                selected_cuisine = cuisines[i % len(cuisines)] if cuisines else "American"
+                recipe = fetch_recipe(selected_cuisine, diet, ",".join(allergies))
+
+                if recipe:
+                    st.markdown(f"#### 🍽️ {recipe['title']}")
+                    st.image(recipe.get("image"), width=350)
+                    st.write("**Ingredients Preview:**")
+                    st.write([i['name'] for i in recipe.get("extendedIngredients", [])])
+                    st.write("**Instructions:**")
+                    st.markdown(recipe.get("instructions") or "No instructions provided.")
+                else:
+                    st.warning("No recipe found for selected preferences.")
 
     elif menu == "Shopping List":
         st.subheader("🛒 Shopping List")
